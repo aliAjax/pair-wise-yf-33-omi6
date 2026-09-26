@@ -1,3 +1,36 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>卫星地面站排程台</title>
-<style>body{font:15px system-ui;max-width:1100px;margin:40px auto;background:#eef5f7;padding:0 20px;color:#102a43}section{background:white;padding:20px;border-radius:12px;margin:16px 0;box-shadow:0 2px 12px #0001}pre{background:#071827;color:#67e8f9;padding:16px;border-radius:8px;overflow:auto}input,button{font:inherit;padding:8px;margin:4px}button{background:#0369a1;color:white;border:0;border-radius:6px}</style>
-<h1>卫星地面站排程台</h1><p>查看请求、接收排程与站点状态。写入使用 JSON API，身份由 X-User-Id、X-Role 和租户头提供。</p><section><input id="u" value="operator"><input id="r" value="operator"><button onclick="load()">刷新</button><pre id="o"></pre></section><script>async function load(){let x=await fetch('/api/state',{headers:{'X-User-Id':u.value,'X-Role':r.value}});o.textContent=JSON.stringify(await x.json(),null,2)}load()</script>
+<style>body{font:15px system-ui;max-width:1100px;margin:40px auto;background:#eef5f7;padding:0 20px;color:#102a43}section{background:white;padding:20px;border-radius:12px;margin:16px 0;box-shadow:0 2px 12px #0001}pre{background:#071827;color:#67e8f9;padding:16px;border-radius:8px;overflow:auto}input,button,textarea,select{font:inherit;padding:8px;margin:4px}button{background:#0369a1;color:white;border:0;border-radius:6px}textarea{width:100%;height:150px;border:1px solid #bcd;box-sizing:border-box}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #d9e2ec;padding:6px 8px;text-align:left;font-size:13px}.tag{padding:1px 8px;border-radius:10px;font-size:12px}.active{background:#fef3c7}.converted{background:#bbf7d0}.released,.canceled{background:#e5e7eb}</style>
+<h1>卫星地面站排程台</h1><p>查看请求、接收排程、站点状态与<strong>临时占位</strong>。身份由 X-User-Id、X-Role 和租户头提供；占位仅 operator / commander 可建、转、取消。</p>
+<section>
+  身份 <input id="u" value="operator" style="width:110px"><input id="r" value="operator" style="width:110px"><input id="t" placeholder="X-Tenant（requester 必填）" style="width:200px">
+  <button onclick="load()">刷新</button><button onclick="sweep()">清扫到期</button>
+  <h3>临时占位批次</h3><div id="holds"></div>
+</section>
+<section>
+  <h3>登记临时占位（整批原子，冲突则全部不入库）</h3>
+  <textarea id="holdbody">{
+  "station_id": "GS1",
+  "expires_at": "2026-09-26T18:00:00Z",
+  "note": "值班预留",
+  "items": [
+    {"request_id": 1, "window_id": 1, "antenna_id": "A1", "starts_at": "2026-09-26T14:00:00Z", "ends_at": "2026-09-26T14:30:00Z", "rate_mbps": 60}
+  ]
+}</textarea>
+  <button onclick="createHold()">提交占位</button>
+</section>
+<section><pre id="o"></pre></section>
+<script>
+function headers(){let h={'Content-Type':'application/json','X-User-Id':u.value,'X-Role':r.value};if(t.value)h['X-Tenant']=t.value;return h}
+async function api(method,path,body){let x=await fetch(path,{method,headers:headers(),body:body?JSON.stringify(body):undefined});let d=await x.json();if(!x.ok)throw d;return d}
+async function load(){
+  let d=await api('GET','/api/state');o.textContent=JSON.stringify(d,null,2);
+  let h=await api('GET','/api/holds');
+  holds.innerHTML=h.holds.length?'<table><tr><th>批次</th><th>站</th><th>状态</th><th>到期</th><th>条目(请求:天线:时段)</th><th>操作</th></tr>'+
+    h.holds.map(x=>`<tr><td>${x.batch.id}</td><td>${x.batch.station_id}</td><td><span class="tag ${x.batch.status}">${x.batch.status}</span></td><td>${x.batch.expires_at}</td><td>${x.items.map(i=>`${i.request_id}:${i.antenna_id}:${i.starts_at.slice(11,16)}-${i.ends_at.slice(11,16)}`).join('<br>')}</td><td>${x.batch.status==='active'?`<button onclick="convertHold(${x.batch.id})">转正式</button> <button onclick="cancelHold(${x.batch.id})">取消</button>`:''}</td></tr>`).join('')+'</table>':'<em>无占位</em>';
+}
+async function createHold(){try{await api('POST','/api/holds',JSON.parse(holdbody.value));load()}catch(e){alert('占位被整批拒绝：\n'+JSON.stringify(e.details||e.message,null,2))}}
+async function convertHold(id){try{let r=await api('POST',`/api/holds/${id}/convert`,{});alert('已转正式排程：'+r.schedules.map(s=>s.id).join(', '));load()}catch(e){alert('转换核验失败，占位保留：\n'+JSON.stringify(e.details||e.message,null,2))}}
+async function cancelHold(id){let reason=prompt('取消原因');if(!reason)return;await api('POST',`/api/holds/${id}/cancel`,{reason});load()}
+async function sweep(){let r=await api('POST','/api/holds/sweep',{});alert('释放到期批次：'+JSON.stringify(r.released_batch_ids));load()}
+load()
+</script>
