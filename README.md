@@ -16,10 +16,15 @@ python3 app.py --db satellite_scheduling.db
 
 - `POST /api/satellites`、`/api/stations`、`/api/antennas`、`/api/maintenance`、`/api/visibility-windows`、`/api/quotas`：资源配置。
 - `POST /api/requests`：创建数据接收请求。
+- `POST /api/holds`：同站天线批量临时占位，任一冲突整批不入库并返回全部原因；`GET /api/holds`、`GET /api/holds/{id}` 查询；`POST /api/holds/{id}/cancel`、`/convert` 取消或转正式排程。
 - `POST /api/requests/{id}/schedule`、`/reschedule`：排程或重排被抢占请求。
 - `POST /api/schedules/{id}/start`、`/complete`、`/cancel`、`/preempt`：接收状态和紧急抢占。
 - `POST /api/visibility-windows/{id}/change`：窗口变化并返回受影响排程；已接收数据保留。
 - `GET /api/state`、`GET /api/schedules/{id}`：权限化状态查询。
+
+## 临时占位
+
+值班组长可把若干未排上的请求整批占位到同一站的天线：创建时核对可见窗口、维护时段、同星接收、已有排程、已有占位和租户配额，任一冲突整批不入库并逐条说明原因。生效占位会阻止冲突排程并计入租户配额；到期未转正式排程自动释放；转换时重新核验，失败保留占位。占位判定在 `holds/validation.py`，占位账本在 `holds/ledger.py`，接口入口与编排在 `app.py`。
 
 ## 测试
 
